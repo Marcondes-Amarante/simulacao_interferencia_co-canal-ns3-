@@ -108,7 +108,21 @@ void imprimirMetricas(Ptr<FlowMonitor> flowMonitor, FlowMonitorHelper& flowMonit
 
 }
 
-int main(){
+int main(int argc, char *argv[]){
+
+    //config parametros de execução da simulação
+    double dist = 1.0;
+    bool mesmoCanal = true;
+    uint32_t run = 1;
+
+    CommandLine cmd;
+    cmd.AddValue("dist", "Distancia entre os APs e as respectivas STAs", dist);
+    cmd.AddValue("mesmoCanal", "Define se as redes utilizam o mesmo canal", mesmoCanal);
+    cmd.AddValue("run", "número da execucao dentro da seed", run);
+    cmd.Parse(argc, argv);
+
+    RngSeedManager::SetSeed(1);
+    RngSeedManager::SetRun(run);
 
     //criação dos nós
     NodeContainer ap1;
@@ -125,8 +139,8 @@ int main(){
 
     //definindo posição dos nós
     NodeContainer allNodes;
-    allNodes.Add(ap1);
     allNodes.Add(sta1);
+    allNodes.Add(ap1);
     allNodes.Add(ap2);
     allNodes.Add(sta2);
 
@@ -135,10 +149,10 @@ int main(){
     Ptr<ListPositionAllocator> positionAlloc =
         CreateObject<ListPositionAllocator>();
 
-    positionAlloc->Add(Vector(2.0, 0.0, 0.0));   // AP1
     positionAlloc->Add(Vector(0.0, 0.0, 0.0));   // STA1
-    positionAlloc->Add(Vector(10.0, 0.0, 0.0));  // AP2
-    positionAlloc->Add(Vector(12.0, 0.0, 0.0));  // STA2
+    positionAlloc->Add(Vector(1.0, 0.0, 0.0));   // AP1
+    positionAlloc->Add(Vector(1.0 + dist, 0.0, 0.0));  // AP2
+    positionAlloc->Add(Vector(2.0 + dist, 0.0, 0.0));  // STA2
 
     mobility.SetMobilityModel("ns3::ConstantPositionMobilityModel");
     mobility.SetPositionAllocator(positionAlloc);
@@ -152,12 +166,21 @@ int main(){
 
     //config básica do canal (meio físico)
     YansWifiChannelHelper channel = YansWifiChannelHelper::Default();
+    Ptr<YansWifiChannel> canal = channel.Create();
 
     //config básica da camada física (phy)
-    YansWifiPhyHelper phy;
-    phy.SetChannel(channel.Create());
+    YansWifiPhyHelper phyA;
+    phyA.SetChannel(canal);
+    phyA.Set("ChannelSettings", StringValue("{1, 20, BAND_2_4GHZ, 0}"));
 
+    YansWifiPhyHelper phyB;
+    phyB.SetChannel(canal);
 
+    if(mesmoCanal){
+        phyB.Set("ChannelSettings", StringValue("{1, 20, BAND_2_4GHZ, 0}"));
+    }else{
+        phyB.Set("ChannelSettings", StringValue("{6, 20, BAND_2_4GHZ, 0}"));
+    }
 
     //config básica da camada mac
     WifiMacHelper mac;
@@ -168,12 +191,12 @@ int main(){
         "ns3::StaWifiMac",
         "Ssid", SsidValue(ssid1)
     );
-    NetDeviceContainer interfaceSta1 = wifi.Install(phy, mac, sta1);
+    NetDeviceContainer interfaceSta1 = wifi.Install(phyA, mac, sta1);
     mac.SetType(
         "ns3::ApWifiMac",
         "Ssid", SsidValue(ssid1)
     );
-    NetDeviceContainer interfaceAp1 = wifi.Install(phy, mac, ap1);
+    NetDeviceContainer interfaceAp1 = wifi.Install(phyA, mac, ap1);
 
     NetDeviceContainer interfacesRedeA;
     interfacesRedeA.Add(interfaceSta1);
@@ -185,12 +208,12 @@ int main(){
         "ns3::StaWifiMac",
         "Ssid", SsidValue(ssid2)
     );
-    NetDeviceContainer interfaceSta2 = wifi.Install(phy, mac, sta2);
+    NetDeviceContainer interfaceSta2 = wifi.Install(phyB, mac, sta2);
     mac.SetType(
         "ns3::ApWifiMac",
         "Ssid", SsidValue(ssid2)
     );
-    NetDeviceContainer interfaceAp2 = wifi.Install(phy, mac, ap2);
+    NetDeviceContainer interfaceAp2 = wifi.Install(phyB, mac, ap2);
 
     NetDeviceContainer interfacesRedeB;
     interfacesRedeB.Add(interfaceSta2);
@@ -234,15 +257,15 @@ int main(){
 
     //Stations como clients
     UdpClientHelper clientA(ipsRedeA.GetAddress(1), portaA);
-    clientA.SetAttribute("MaxPackets", UintegerValue(1000));
-    clientA.SetAttribute("Interval", TimeValue(Seconds(0.01)));
+    clientA.SetAttribute("MaxPackets", UintegerValue(80000));
+    clientA.SetAttribute("Interval", TimeValue(MicroSeconds(200)));
     clientA.SetAttribute("PacketSize", UintegerValue(1024));
 
     ApplicationContainer clientAppA = clientA.Install(sta1.Get(0));
 
     UdpClientHelper clientB(ipsRedeB.GetAddress(1), portaB);
-    clientB.SetAttribute("MaxPackets", UintegerValue(1000));
-    clientB.SetAttribute("Interval", TimeValue(Seconds(0.01)));
+    clientB.SetAttribute("MaxPackets", UintegerValue(80000));
+    clientB.SetAttribute("Interval", TimeValue(MicroSeconds(200)));
     clientB.SetAttribute("PacketSize", UintegerValue(1024));
 
     ApplicationContainer clientAppB = clientB.Install(sta2.Get(0));

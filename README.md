@@ -101,5 +101,6 @@ Copiar pasta scripts, e arquivos da pasta `scratch` desse repositório para o se
 ### 13. Executar simulação
 
 ```
-./ns3 run scratch/wifi-interferencia-co-canal
+./ns3 run "wifi-interferencia-co-canal --dist=1 --mesmoCanal=true --run=1"
 ```
+onde `--dist=1` representa a distancia entre os APs e as Stations de ambas as redes, `--mesmoCanal=true` define se as redes utilizam o mesmo canal (true), ou canais diferente (false), e `--run=1` identifica a sequência de execução dentro da seed pre-fixada. Por padrão, `mesmoCanal=true`, `dist=1` e `run=1`.
