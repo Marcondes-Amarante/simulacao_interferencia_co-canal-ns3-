@@ -7,24 +7,42 @@
 #include "ns3/applications-module.h"
 #include "ns3/flow-monitor-module.h"
 
+#include <fstream>
+
 using namespace ns3;
 
-void imprimirMetricas(Ptr<FlowMonitor> flowMonitor, FlowMonitorHelper& flowMonitorHelper){
+void imprimirMetricas(Ptr<FlowMonitor> flowMonitor, FlowMonitorHelper& flowMonitorHelper, std::string nomeArquivo, bool mesmoCanal, uint32_t run){
     
-    //força o monitor a monitorar os pacotes ainda em trânsito
+    // força o monitor a processar os pacotes ainda em trânsito antes de ler os dados
     flowMonitor->CheckForLostPackets();
 
-    //rastreia e converte os dados dos fluxos associados a um flowId
+    // rastreia e converte os dados dos fluxos associados a um flowId
     Ptr<Ipv4FlowClassifier> classifier =
         DynamicCast<Ipv4FlowClassifier>(
             flowMonitorHelper.GetClassifier()
         );
     
-    //monta dict com id e stats dos fluxos
+    // monta mapa com id e stats dos fluxos
     std::map<FlowId, FlowMonitor::FlowStats> stats =
         flowMonitor->GetFlowStats();
     
-    //itera por fluxo, recupera dados, e calcula métricas
+    //abrindo e verificando arquivo csv
+    std::ofstream arquivoCsv;
+    std::ifstream checarArquivo(nomeArquivo);
+    bool arquivoVazio = true;
+    if (checarArquivo.is_open()) {
+        if (checarArquivo.peek() != std::ifstream::traits_type::eof()) {
+            arquivoVazio = false;
+        }
+        checarArquivo.close();
+    }
+
+    arquivoCsv.open(nomeArquivo, std::ios::out | std::ios::app);
+     if (arquivoVazio) {
+        arquivoCsv << "Run,MesmoCanal,FlowId,Origem,Destino,PacotesEnviados,PacotesRecebidos,PacotesPerdidos,TaxaPerda,ThroughputMbps,AtrasoMedioMs\n";
+    }
+    
+    // itera por fluxo, recupera dados, e calcula métricas
     for (const auto& flow : stats)
     {
         FlowId flowId = flow.first;
@@ -33,80 +51,66 @@ void imprimirMetricas(Ptr<FlowMonitor> flowMonitor, FlowMonitorHelper& flowMonit
         Ipv4FlowClassifier::FiveTuple t =
             classifier->FindFlow(flowId);
 
-        std::cout << "----------------------------------------"
-                  << std::endl;
-
+        std::cout << "----------------------------------------" << std::endl;
         std::cout << "Fluxo " << flowId << std::endl;
+        std::cout << "Origem: " << t.sourceAddress << std::endl;
+        std::cout << "Destino: " << t.destinationAddress << std::endl;
 
-        std::cout << "Origem: "
-                  << t.sourceAddress
-                  << std::endl;
+        // 1. Métricas Base do FlowMonitor
+        std::cout << "Pacotes enviados: " << flowStats.txPackets << std::endl;
+        std::cout << "Pacotes recebidos: " << flowStats.rxPackets << std::endl;
+        std::cout << "Pacotes perdidos: " << flowStats.lostPackets << std::endl;
 
-        std::cout << "Destino: "
-                  << t.destinationAddress
-                  << std::endl;
-
-        std::cout << "Pacotes enviados: "
-                  << flowStats.txPackets
-                  << std::endl;
-
-        std::cout << "Pacotes recebidos: "
-                  << flowStats.rxPackets
-                  << std::endl;
-
-        std::cout << "Pacotes perdidos: "
-                  << flowStats.lostPackets
-                  << std::endl;
-
+        // 3. Cálculo Correto da Taxa de Perda (%)
         double perda = 0.0;
-
         if (flowStats.txPackets > 0)
         {
-            perda =
-                100.0 *
-                (flowStats.txPackets - flowStats.rxPackets)
-                / flowStats.txPackets;
+            // Taxa baseada em tudo que não conseguiu chegar ao destino
+            perda = 100.0 * static_cast<double>(flowStats.lostPackets) / flowStats.txPackets;
         }
+        std::cout << "Taxa de perda: " << perda << "%" << std::endl;
 
-        std::cout << "Taxa de perda: "
-                  << perda
-                  << "%"
-                  << std::endl;
-
+        // 4. Cálculo do Throughput (Vazão)
         double throughput = 0.0;
-
-        if (flowStats.timeLastRxPacket >
-            flowStats.timeFirstTxPacket)
+        if (flowStats.timeLastRxPacket > flowStats.timeFirstTxPacket)
         {
-            throughput =
-                flowStats.rxBytes * 8.0 /
+            // Nota: rxBytes mede os bytes que chegaram com sucesso na camada IP
+            throughput = flowStats.rxBytes * 8.0 /
                 (
                     flowStats.timeLastRxPacket.GetSeconds() -
                     flowStats.timeFirstTxPacket.GetSeconds()
                 );
         }
+        std::cout << "Throughput: " << throughput / 1e6 << " Mbps" << std::endl;
+        throughput = throughput / 1e6;
 
-        std::cout << "Throughput: "
-                  << throughput / 1e6
-                  << " Mbps"
-                  << std::endl;
-
+        // 5. Cálculo do Atraso Médio (Delay)
         double atraso = 0.0;
-
         if (flowStats.rxPackets > 0)
         {
-            atraso =
-                flowStats.delaySum.GetSeconds()
-                / flowStats.rxPackets;
+            atraso = flowStats.delaySum.GetSeconds() / flowStats.rxPackets;
         }
+        std::cout << "Atraso medio: " << atraso * 1000 << " ms" << std::endl;
 
-        std::cout << "Atraso medio: "
-                  << atraso * 1000
-                  << " ms"
-                  << std::endl;
+        //grvando dados no csv
+        arquivoCsv << run << ","
+                   << mesmoCanal << ","
+                   << flowId << ","
+                   << t.sourceAddress << ","
+                   << t.destinationAddress << ","
+                   << flowStats.txPackets << ","
+                   << flowStats.rxPackets << ","
+                   << flowStats.lostPackets << ","
+                   << perda << ","
+                   << throughput << ","
+                   << atraso << "\n";
+    
     }
 
+    arquivoCsv.close();
+    std::cout << "Métricas anexadas com sucesso em: " << nomeArquivo << std::endl;
 }
+
 
 int main(int argc, char *argv[]){
 
@@ -279,14 +283,14 @@ int main(int argc, char *argv[]){
 
 
     //controle da simulação
-    Simulator::Stop(Seconds(11.0));
+    Simulator::Stop(Seconds(13.0));
 
     //criando monitorador de métricas
     FlowMonitorHelper flowMonitorHelper;
     Ptr<FlowMonitor> flowMonitor = flowMonitorHelper.InstallAll();
 
     Simulator::Run();
-    imprimirMetricas(flowMonitor, flowMonitorHelper);
+    imprimirMetricas(flowMonitor, flowMonitorHelper, "scratch/dados.csv", mesmoCanal, run);
     Simulator::Destroy();
 
     return 0;
