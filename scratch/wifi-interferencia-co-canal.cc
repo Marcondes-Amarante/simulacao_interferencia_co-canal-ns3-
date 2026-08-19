@@ -11,7 +11,7 @@
 
 using namespace ns3;
 
-void imprimirMetricas(Ptr<FlowMonitor> flowMonitor, FlowMonitorHelper& flowMonitorHelper, std::string nomeArquivo, bool mesmoCanal, uint32_t run){
+void imprimirMetricas(Ptr<FlowMonitor> flowMonitor, FlowMonitorHelper& flowMonitorHelper, double dist, std::string nomeArquivo, bool mesmoCanal, uint32_t run){
     
     // força o monitor a processar os pacotes ainda em trânsito antes de ler os dados
     flowMonitor->CheckForLostPackets();
@@ -39,7 +39,7 @@ void imprimirMetricas(Ptr<FlowMonitor> flowMonitor, FlowMonitorHelper& flowMonit
 
     arquivoCsv.open(nomeArquivo, std::ios::out | std::ios::app);
      if (arquivoVazio) {
-        arquivoCsv << "Run,MesmoCanal,FlowId,Origem,Destino,PacotesEnviados,PacotesRecebidos,PacotesPerdidos,TaxaPerda,ThroughputMbps,AtrasoMedioMs\n";
+        arquivoCsv << "Distancia,Run,MesmoCanal,FlowId,Origem,Destino,PacotesEnviados,PacotesRecebidos,PacotesPerdidos,TaxaPerda,ThroughputMbps,AtrasoMedioMs\n";
     }
     
     // itera por fluxo, recupera dados, e calcula métricas
@@ -93,7 +93,8 @@ void imprimirMetricas(Ptr<FlowMonitor> flowMonitor, FlowMonitorHelper& flowMonit
         std::cout << "Atraso medio: " << atraso * 1000 << " ms" << std::endl;
 
         //grvando dados no csv
-        arquivoCsv << run << ","
+        arquivoCsv << dist << ","
+                   << run << ","
                    << mesmoCanal << ","
                    << flowId << ","
                    << t.sourceAddress << ","
@@ -290,7 +291,7 @@ int main(int argc, char *argv[]){
     Ptr<FlowMonitor> flowMonitor = flowMonitorHelper.InstallAll();
 
     Simulator::Run();
-    imprimirMetricas(flowMonitor, flowMonitorHelper, "scratch/dados.csv", mesmoCanal, run);
+    imprimirMetricas(flowMonitor, flowMonitorHelper, dist, "scripts/dados.csv", mesmoCanal, run);
     Simulator::Destroy();
 
     return 0;
